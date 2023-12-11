@@ -1,6 +1,6 @@
 import { ssam } from "ssam";
 import type { Sketch, WebGLProps, SketchSettings } from "ssam";
-import { BoxGeometry, Mesh, PerspectiveCamera, Scene, ShaderMaterial, WebGLRenderer } from "three";
+import * as THREE from "three";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls";
 import Stats from "three/examples/jsm/libs/stats.module";
 import vert from "./shaders/vert.glsl";
@@ -12,38 +12,75 @@ const sketch = ({ wrap, canvas, width, height, pixelRatio }: WebGLProps) => {
     import.meta.hot.accept(() => wrap.hotReload());
   }
 
-  const renderer = new WebGLRenderer({ canvas });
+  let target = new THREE.Vector2(0, 0);
+
+  const renderer = new THREE.WebGLRenderer({ canvas, antialias: true });
   renderer.setSize(width, height);
   renderer.setPixelRatio(pixelRatio);
-  renderer.setClearColor(0xffffff, 1);
+  renderer.setClearColor(0x000000, 1);
 
-  const camera = new PerspectiveCamera(50, width / height, 0.1, 1000);
-  camera.position.set(1, 2, 3);
-  camera.lookAt(0, 0, 0);
+  const camera = new THREE.PerspectiveCamera(50, width / height, 0.1, 1000);
+  camera.position.set(0, 0, 0);
+  camera.lookAt(0, 0, -100);
 
-  const controls = new OrbitControls(camera, renderer.domElement);
+  // const controls = new OrbitControls(camera, renderer.domElement);
 
   const stats = new Stats();
-  document.body.appendChild(stats.dom);
+  // document.body.appendChild(stats.dom);
 
-  const scene = new Scene();
+  const scene = new THREE.Scene();
 
-  const geometry = new BoxGeometry(1, 1, 1);
-  const uniforms = {
-    time: { value: 0.0 },
-  };
-  const material = new ShaderMaterial({
-    vertexShader: vert,
-    fragmentShader: frag,
-    uniforms,
-  });
-  const mesh = new Mesh(geometry, material);
-  scene.add(mesh);
+  const geometry = new THREE.PlaneGeometry(2, 2);
+
+  const getMaterial = (level: Number) => {
+    let material = new THREE.ShaderMaterial({
+      transparent: true,
+      side: THREE.DoubleSide,
+      uniforms: {
+        time: { value: 0.0 },
+        uLevel: { value: level },
+      },
+      vertexShader: vert,
+      fragmentShader: frag,
+    })
+
+    return material;
+  }
+
+  let number = 120;
+  let meshes = [];
+  let materials: THREE.ShaderMaterial[] = [];
+  for(let i = 0; i < number; i++) {
+    let material = getMaterial(i / 30);
+    materials.push(material);
+
+    let mesh = new THREE.Mesh(geometry, material);
+    scene.add(mesh);
+    mesh.position.z = -i * 0.2;
+    meshes.push(mesh);
+  }
+
 
   wrap.render = ({ playhead }: WebGLProps) => {
-    uniforms["time"].value = playhead * Math.PI * 2;
+    playhead = (Date.now() / 10000) % 1;
+    camera.position.z = - playhead * 6;
 
-    controls.update();
+    materials.forEach((material, i) => {
+      material.uniforms["time"].value = playhead;
+    });
+
+    target.lerp(new THREE.Vector2(window.screenLeft, window.screenTop), 0.9);
+
+    camera.setViewOffset(
+      window.screen.width,
+      window.screen.height,
+      target.x,
+      target.y,
+      window.innerWidth,
+      window.innerHeight
+    )
+
+    // controls.update();
     stats.update();
     renderer.render(scene, camera);
   };
@@ -68,7 +105,7 @@ const settings: SketchSettings = {
   duration: 6_000,
   playFps: 60,
   exportFps: 60,
-  framesFormat: ["webm"],
+  framesFormat: ["mp4"],
   attributes: {
     preserveDrawingBuffer: true,
   },
